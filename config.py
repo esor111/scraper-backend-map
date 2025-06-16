@@ -1,0 +1,3 @@
+# Supabase credentials
+SUPABASE_URL = "https://ufmcapgkohjkbkukxeil.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmbWNhcGdrb2hqa2JrdWt4ZWlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk2Mzg5OTgsImV4cCI6MjA2NTIxNDk5OH0.qTjBlTKRvywMoKTHAnOr_FPrFq4TTIhm0GLOQEZ787s" 
