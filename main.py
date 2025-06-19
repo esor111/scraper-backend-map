@@ -1,11 +1,13 @@
 import os
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 from supabase import create_client, Client
 from config import SUPABASE_URL, SUPABASE_KEY
+import shutil
+from pathlib import Path
 
 # Initialize FastAPI app
 app = FastAPI(title="Entity Data API")
@@ -106,7 +108,193 @@ async def create_entity(entity: EntityData):
         if not response.data:
             raise HTTPException(status_code=500, detail="Failed to insert data")
         
-        return response.data[0]
+        return filtered_data[0]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.post("/entity/{entity_id}/upload-images")
+async def upload_images_by_id(
+    entity_id: str,
+    files: List[UploadFile] = File(..., description="Image files to upload")
+):
+    """
+    Upload images for an entity by entity ID.
+    Creates folder based on entity's folder_name and saves images there.
+    Updates the entity's images array and uploaded_image flag.
+    """
+    try:
+        # Get entity details
+        entity_response = supabase.table("entity_data").select("*").eq("id", entity_id).execute()
+        
+        if not entity_response.data:
+            raise HTTPException(status_code=404, detail="Entity not found")
+        
+        entity = entity_response.data[0]
+        
+        # Check if folder_name exists, if not create one
+        if not entity.get("folder_name"):
+            if not entity.get('name') or not entity.get('address'):
+                raise HTTPException(status_code=400, detail="Entity must have name and address to create folder")
+            
+            # Create folder name
+            name_part = "".join(entity['name'].lower().split())
+            address_part = "".join(entity['address'].lower().split(',')[0].split())
+            folder_name = f"{name_part}_{address_part}"
+            
+            # Update folder_name in database
+            supabase.table("entity_data").update({"folder_name": folder_name}).eq("id", entity_id).execute()
+            entity["folder_name"] = folder_name
+        
+        # Create directory path
+        base_dir = "C:\\Users\\ishwor\\Desktop\\kaha\\scraper\\images"
+        entity_folder = os.path.join(base_dir, entity["folder_name"])
+        
+        # Create directory if it doesn't exist
+        Path(entity_folder).mkdir(parents=True, exist_ok=True)
+        
+        # Process uploaded files
+        uploaded_filenames = []
+        existing_images = entity.get("images", [])
+        
+        for file in files:
+            # Validate file type
+            if not file.content_type or not file.content_type.startswith("image/"):
+                raise HTTPException(status_code=400, detail=f"File {file.filename} is not an image")
+            
+            # Generate unique filename if file already exists
+            file_path = os.path.join(entity_folder, file.filename)
+            counter = 1
+            original_name, ext = os.path.splitext(file.filename)
+            
+            while os.path.exists(file_path):
+                new_filename = f"{original_name}_{counter}{ext}"
+                file_path = os.path.join(entity_folder, new_filename)
+                counter += 1
+            
+            # Save file
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            
+            uploaded_filenames.append(os.path.basename(file_path))
+        
+        # Update entity's images array and uploaded_image flag
+        updated_images = list(set(existing_images + uploaded_filenames))  # Remove duplicates
+        
+        update_payload = {
+            "images": updated_images,
+            "uploaded_image": True,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        # Update entity in database
+        update_response = supabase.table("entity_data").update(update_payload).eq("id", entity_id).execute()
+        
+        if not update_response.data:
+            raise HTTPException(status_code=500, detail="Failed to update entity")
+        
+        return {
+            "message": f"Successfully uploaded {len(uploaded_filenames)} images",
+            "uploaded_files": uploaded_filenames,
+            "entity_folder": entity_folder,
+            "total_images": len(updated_images),
+            "entity": update_response.data[0]
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.post("/entity/place_id/{place_id}/upload-images")
+async def upload_images_by_place_id(
+    place_id: str,
+    files: List[UploadFile] = File(..., description="Image files to upload")
+):
+    """
+    Upload images for an entity by place_id.
+    Creates folder based on entity's folder_name and saves images there.
+    Updates the entity's images array and uploaded_image flag.
+    """
+    try:
+        # Get entity details
+        entity_response = supabase.table("entity_data").select("*").eq("place_id", place_id).execute()
+        
+        if not entity_response.data:
+            raise HTTPException(status_code=404, detail="Entity not found")
+        
+        entity = entity_response.data[0]
+        
+        # Check if folder_name exists, if not create one
+        if not entity.get("folder_name"):
+            if not entity.get('name') or not entity.get('address'):
+                raise HTTPException(status_code=400, detail="Entity must have name and address to create folder")
+            
+            # Create folder name
+            name_part = "".join(entity['name'].lower().split())
+            address_part = "".join(entity['address'].lower().split(',')[0].split())
+            folder_name = f"{name_part}_{address_part}"
+            
+            # Update folder_name in database
+            supabase.table("entity_data").update({"folder_name": folder_name}).eq("place_id", place_id).execute()
+            entity["folder_name"] = folder_name
+        
+        # Create directory path
+        base_dir = "C:\\Users\\ishwor\\Desktop\\kaha\\scraper\\images"
+        entity_folder = os.path.join(base_dir, entity["folder_name"])
+        
+        # Create directory if it doesn't exist
+        Path(entity_folder).mkdir(parents=True, exist_ok=True)
+        
+        # Process uploaded files
+        uploaded_filenames = []
+        existing_images = entity.get("images", [])
+        
+        for file in files:
+            # Validate file type
+            if not file.content_type or not file.content_type.startswith("image/"):
+                raise HTTPException(status_code=400, detail=f"File {file.filename} is not an image")
+            
+            # Generate unique filename if file already exists
+            file_path = os.path.join(entity_folder, file.filename)
+            counter = 1
+            original_name, ext = os.path.splitext(file.filename)
+            
+            while os.path.exists(file_path):
+                new_filename = f"{original_name}_{counter}{ext}"
+                file_path = os.path.join(entity_folder, new_filename)
+                counter += 1
+            
+            # Save file
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            
+            uploaded_filenames.append(os.path.basename(file_path))
+        
+        # Update entity's images array and uploaded_image flag
+        updated_images = list(set(existing_images + uploaded_filenames))  # Remove duplicates
+        
+        update_payload = {
+            "images": updated_images,
+            "uploaded_image": True,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        # Update entity in database
+        update_response = supabase.table("entity_data").update(update_payload).eq("place_id", place_id).execute()
+        
+        if not update_response.data:
+            raise HTTPException(status_code=500, detail="Failed to update entity")
+        
+        return {
+            "message": f"Successfully uploaded {len(uploaded_filenames)} images",
+            "uploaded_files": uploaded_filenames,
+            "entity_folder": entity_folder,
+            "total_images": len(updated_images),
+            "entity": update_response.data[0]
+        }
+    
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
@@ -124,19 +312,99 @@ async def get_entity(entity_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
+# Define Pydantic model for entity updates (all fields optional)
+class EntityDataUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_spending_on_ads: Optional[bool] = None
+    reviews: Optional[int] = None
+    rating: Optional[float] = None
+    competitors: Optional[str] = None
+    website: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    can_claim: Optional[bool] = None
+    owner_name: Optional[str] = None
+    owner_profile_link: Optional[str] = None
+    featured_image: Optional[str] = None
+    main_category: Optional[str] = None
+    uploaded_image: Optional[bool] = None
+    images: Optional[List[str]] = None
+    folder_name: Optional[str] = None
+
+@app.put("/entity/{entity_id}", response_model=EntityDataResponse)
+async def update_entity(entity_id: str, entity_update: EntityDataUpdate):
+    try:
+        # First check if entity exists
+        existing_response = supabase.table("entity_data").select("*").eq("id", entity_id).execute()
+        
+        if not existing_response.data:
+            raise HTTPException(status_code=404, detail="Entity not found")
+        
+        # Prepare update payload (only include fields that are not None)
+        update_payload = {}
+        for field, value in entity_update.model_dump().items():
+            if value is not None:
+                update_payload[field] = value
+        
+        # Add updated_at timestamp
+        update_payload["updated_at"] = datetime.utcnow().isoformat()
+        
+        # Perform the update
+        response = supabase.table("entity_data").update(update_payload).eq("id", entity_id).execute()
+        
+        # Check if update was successful
+        if not response.data:
+            raise HTTPException(status_code=500, detail="Failed to update entity")
+        
+        return response.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.put("/entity/place_id/{place_id}", response_model=EntityDataResponse)
+async def update_entity_by_place_id(place_id: str, entity_update: EntityDataUpdate):
+    try:
+        # First check if entity exists
+        existing_response = supabase.table("entity_data").select("*").eq("place_id", place_id).execute()
+        
+        if not existing_response.data:
+            raise HTTPException(status_code=404, detail="Entity not found")
+        
+        # Prepare update payload (only include fields that are not None)
+        update_payload = {}
+        for field, value in entity_update.model_dump().items():
+            if value is not None:
+                update_payload[field] = value
+        
+        # Add updated_at timestamp
+        update_payload["updated_at"] = datetime.utcnow().isoformat()
+        
+        # Perform the update
+        response = supabase.table("entity_data").update(update_payload).eq("place_id", place_id).execute()
+        
+        # Check if update was successful
+        if not response.data:
+            raise HTTPException(status_code=500, detail="Failed to update entity")
+        
+        return response.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
 @app.get("/entities", response_model=List[EntityDataWithFolder])
 async def get_all_entities(
     page: int = Query(1, ge=1, description="Page number (starting from 1)"),
     take: int = Query(10, ge=1, le=100, description="Number of items per page"),
     checkimages: Optional[bool] = Query(None, description="Filter entities with empty images array"),
-    name: Optional[str] = Query(None, description="Filter entities by name (case-insensitive partial match)"),
     created_from: Optional[str] = Query(None, description="Start date for created_at filter (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"),
     created_to: Optional[str] = Query(None, description="End date for created_at filter (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)")
 ):
     """
     Returns a paginated list of businesses with optional filters:
     - checkimages: if True, returns only entities with empty images array
-    - name: case-insensitive partial name search
     - created_from/created_to: filter by created_at date range
     """
     base_dir = "C:\\Users\\ishwor\\Desktop\\kaha\\scraper\\images"
@@ -148,10 +416,14 @@ async def get_all_entities(
         # Start building the query
         query = supabase.table("entity_data").select("*")
         
-        # Apply name filter using ilike for case-insensitive partial matching
-        if name:
-            # ilike performs case-insensitive pattern matching with wildcards
-            query = query.ilike("name", f"%{name}%")
+        # Apply checkimages filter
+        if checkimages is True:
+            # Filter for empty or null images array
+            # We'll get all records and then filter in Python since JSON array filtering is complex
+            pass  # Will be handled after query execution
+        elif checkimages is False:
+            # Filter for non-empty images array
+            pass  # Will be handled after query execution
         
         # Apply date range filters
         if created_from:
