@@ -398,6 +398,7 @@ async def update_entity_by_place_id(place_id: str, entity_update: EntityDataUpda
 async def get_all_entities(
     page: int = Query(1, ge=1, description="Page number (starting from 1)"),
     take: int = Query(10, ge=1, le=100, description="Number of items per page"),
+    name: Optional[str] = Query(None, description="Search term to match at the start of entity names"),
     checkimages: Optional[bool] = Query(None, description="Filter entities with empty images array"),
     created_from: Optional[str] = Query(None, description="Start date for created_at filter (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"),
     created_to: Optional[str] = Query(None, description="End date for created_at filter (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)")
@@ -415,6 +416,10 @@ async def get_all_entities(
     try:
         # Start building the query
         query = supabase.table("entity_data").select("*")
+        
+        # Add name search condition if name parameter is provided
+        if name:
+            query = query.ilike("name", f"{name}%")
         
         # Apply checkimages filter
         if checkimages is True:
@@ -540,6 +545,88 @@ def create_folders(page: int = 1, take: int = 10):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.get("/search-entities", response_model=List[EntityDataResponse])
+def search_entities(
+    q: str = Query(..., min_length=1, description="Search term to match at the start of entity names"),
+    page: int = Query(1, ge=1, description="Page number (starting from 1)"),
+    take: int = Query(10, ge=1, le=100, description="Number of items per page"),
+    checkimages: Optional[bool] = Query(None, description="Filter entities with empty images array"),
+    created_from: Optional[str] = Query(None, description="Start date for created_at filter (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"),
+    created_to: Optional[str] = Query(None, description="End date for created_at filter (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)")
+):
+    """
+    Search for entities where the name starts with the search term (case-insensitive).
+    Supports filtering by images and date range.
+    Returns a paginated list of matching entities.
+    """
+    try:
+        limit = take
+        start = (page - 1) * limit
+        end = start + limit - 1
+        
+        # Start building the query
+        query = supabase.table("entity_data").select("*")
+        
+        # Add name search condition
+        query = query.ilike("name", f"{q}%")
+        
+        # Apply date range filters
+        if created_from:
+            try:
+                if len(created_from) == 10:  # YYYY-MM-DD format
+                    created_from_dt = datetime.strptime(created_from, "%Y-%m-%d")
+                else:  # YYYY-MM-DD HH:MM:SS format
+                    created_from_dt = datetime.strptime(created_from, "%Y-%m-%d %H:%M:%S")
+                query = query.gte("created_at", created_from_dt.isoformat())
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Invalid created_from date format. Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"
+                )
+        
+        if created_to:
+            try:
+                if len(created_to) == 10:  # YYYY-MM-DD format
+                    created_to_dt = datetime.strptime(created_to, "%Y-%m-%d")
+                    # Set to end of day if only date is provided
+                    created_to_dt = created_to_dt.replace(hour=23, minute=59, second=59)
+                else:  # YYYY-MM-DD HH:MM:SS format
+                    created_to_dt = datetime.strptime(created_to, "%Y-%m-%d %H:%M:%S")
+                query = query.lte("created_at", created_to_dt.isoformat())
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Invalid created_to date format. Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"
+                )
+        
+        # Apply pagination
+        query = query.range(start, end)
+        
+        # Execute the query
+        response = query.execute()
+
+        # Apply checkimages filter in Python (since PostgreSQL JSON array filtering is complex)
+        filtered_data = response.data
+        if checkimages is True:
+            # Filter for entities with empty or null images array
+            filtered_data = [
+                record for record in response.data 
+                if not record.get("images") or len(record.get("images", [])) == 0
+            ]
+        elif checkimages is False:
+            # Filter for entities with non-empty images array
+            filtered_data = [
+                record for record in response.data 
+                if record.get("images") and len(record.get("images", [])) > 0
+            ]
+        
+        return filtered_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
