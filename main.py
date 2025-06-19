@@ -69,7 +69,7 @@ class EntityDataResponse(BaseModel):
     main_category: Optional[str] = None
     categories: Optional[str] = None
     workday_timing: Optional[str] = None
-    is_temporarily_closed: Optional[bool] = False
+    is_temporarily_closed: Optional[bool] = Field(default=False, nullable=True)
     closed_on: Optional[str] = None
     address: Optional[str] = None
     review_keywords: Optional[str] = None
@@ -146,7 +146,7 @@ async def upload_images_by_id(
             entity["folder_name"] = folder_name
         
         # Create directory path
-        base_dir = "C:\\Users\\ishwor\\Desktop\\kaha\\scraper\\images"
+        base_dir = "D:\script-data"
         entity_folder = os.path.join(base_dir, entity["folder_name"])
         
         # Create directory if it doesn't exist
@@ -239,7 +239,7 @@ async def upload_images_by_place_id(
             entity["folder_name"] = folder_name
         
         # Create directory path
-        base_dir = "C:\\Users\\ishwor\\Desktop\\kaha\\scraper\\images"
+        base_dir = "D:\script-data"
         entity_folder = os.path.join(base_dir, entity["folder_name"])
         
         # Create directory if it doesn't exist
@@ -408,7 +408,7 @@ async def get_all_entities(
     - checkimages: if True, returns only entities with empty images array
     - created_from/created_to: filter by created_at date range
     """
-    base_dir = "C:\\Users\\ishwor\\Desktop\\kaha\\scraper\\images"
+    base_dir = "D:\script-data"
     limit = take
     start = (page - 1) * limit
     end = start + limit - 1
@@ -502,7 +502,7 @@ def create_folders(page: int = 1, take: int = 10):
     the business name and address, updates the database, and returns the updated
     business data including a new folderDir path.
     """
-    base_dir = "C:\\Users\\ishwor\\Desktop\\kaha\\scraper\\images"  # Hardcoded base directory
+    base_dir = "D:\script-data"  # Hardcoded base directory
 
     try:
         # 1. Get all businesses that have a null folder_name
