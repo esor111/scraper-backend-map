@@ -24,6 +24,16 @@ app.add_middleware(
 # Initialize Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+def get_base_folder_dir():
+    """
+    Fetch the base folder_dir from the Supabase folder_directory table.
+    Returns the first folder_dir found, or raises an HTTPException if not found.
+    """
+    response = supabase.table("folder_directory").select("folder_dir").limit(1).execute()
+    if response.data and response.data[0].get("folder_dir"):
+        return response.data[0]["folder_dir"]
+    raise HTTPException(status_code=500, detail="Base folder_dir not set in Supabase folder_directory table.")
+
 # Define Pydantic model for entity data
 class EntityData(BaseModel):
     place_id: str
@@ -135,18 +145,19 @@ async def upload_images_by_id(
         if not entity.get("folder_name"):
             if not entity.get('name') or not entity.get('address'):
                 raise HTTPException(status_code=400, detail="Entity must have name and address to create folder")
-            
-            # Create folder name
-            name_part = "".join(entity['name'].lower().split())
-            address_part = "".join(entity['address'].lower().split(',')[0].split())
+
+            # Create folder name (force lowercase for both parts)
+            name_part = "".join(entity['name'].split()).lower()
+            address_raw = entity['address'].split(',')[0]
+            address_part = "".join(address_raw.split()).lower()
             folder_name = f"{name_part}_{address_part}"
-            
+
             # Update folder_name in database
             supabase.table("entity_data").update({"folder_name": folder_name}).eq("id", entity_id).execute()
             entity["folder_name"] = folder_name
         
         # Create directory path
-        base_dir = "D:\script-data"
+        base_dir = get_base_folder_dir()
         entity_folder = os.path.join(base_dir, entity["folder_name"])
         
         # Create directory if it doesn't exist
@@ -239,7 +250,7 @@ async def upload_images_by_place_id(
             entity["folder_name"] = folder_name
         
         # Create directory path
-        base_dir = "D:\script-data"
+        base_dir = "C:\\Users\\ishwor\\Music\\scrape-business"
         entity_folder = os.path.join(base_dir, entity["folder_name"])
         
         # Create directory if it doesn't exist
@@ -408,7 +419,7 @@ async def get_all_entities(
     - checkimages: if True, returns only entities with empty images array
     - created_from/created_to: filter by created_at date range
     """
-    base_dir = "D:\script-data"
+    base_dir = get_base_folder_dir()
     limit = take
     start = (page - 1) * limit
     end = start + limit - 1
@@ -481,11 +492,11 @@ async def get_all_entities(
                 record for record in response.data 
                 if record.get("images") and len(record.get("images", [])) > 0
             ]
-
+        print("folder_dir", base_dir)
         # Add folderDir to each record
         for record in filtered_data:
             if record.get("folder_name"):
-                record["folderDir"] = os.path.join(base_dir, record["folder_name"])
+                record["folderDir"] = base_dir + "\\" + record["folder_name"]
             else:
                 record["folderDir"] = None
 
@@ -502,7 +513,7 @@ def create_folders(page: int = 1, take: int = 10):
     the business name and address, updates the database, and returns the updated
     business data including a new folderDir path.
     """
-    base_dir = "D:\script-data"  # Hardcoded base directory
+    base_dir = get_base_folder_dir()  # Now fetched from Supabase
 
     try:
         # 1. Get all businesses that have a null folder_name
@@ -537,7 +548,7 @@ def create_folders(page: int = 1, take: int = 10):
 
             if update_response.data:
                 updated_record = update_response.data[0]
-                updated_record['folderDir'] = os.path.join(base_dir, folder_name)
+                updated_record['folderDir'] = base_dir + "\\" + folder_name
                 updated_businesses_for_response.append(updated_record)
 
         return updated_businesses_for_response
